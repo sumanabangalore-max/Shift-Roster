@@ -1,0 +1,6 @@
+{
+  "name": "TeamOff & Shift Roster Manager",
+  "description": "Time off management and approval workflows with real-time leave balances, Teams notifications, email reminders, after-office overtime tracking, and monthly primary/secondary shift roster coverage.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
