@@ -21,11 +21,15 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({ isOpen, onClose }) =
 
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
-  const [jobTitle, setJobTitle] = useState('Cloud Engineer');
+  const [role, setRole] = useState<'employee' | 'manager'>('employee');
+  const [jobTitle, setJobTitle] = useState('Cloud Infrastructure Engineer');
   const [teamName, setTeamName] = useState<TeamName>('Cloud Infra');
   const [avatar, setAvatar] = useState(PRESET_AVATARS[0]);
   const [phone, setPhone] = useState('+1 (555) 019-8822');
   const [teamsHandle, setTeamsHandle] = useState('');
+  const [initialPto, setInitialPto] = useState(20);
+  const [initialSick, setInitialSick] = useState(10);
+  const [initialPersonal, setInitialPersonal] = useState(5);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
@@ -47,12 +51,16 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({ isOpen, onClose }) =
     const result = addUser({
       name: name.trim(),
       email: email.trim(),
+      role,
       jobTitle: jobTitle.trim(),
       teamName: teamName.trim(),
       department: teamName.trim(),
       avatar: avatar.trim(),
       phone: phone.trim(),
-      teamsHandle: teamsHandle.trim() || `@${name.trim().toLowerCase().replace(/\s+/g, '.')}`
+      teamsHandle: teamsHandle.trim() || `@${name.trim().toLowerCase().replace(/\s+/g, '.')}`,
+      initialPto: Number(initialPto) || 20,
+      initialSick: Number(initialSick) || 10,
+      initialPersonal: Number(initialPersonal) || 5
     });
 
     if (!result.success) {
@@ -60,7 +68,7 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({ isOpen, onClose }) =
       return;
     }
 
-    setSuccessMsg(`Employee ${name} added to ${teamName} successfully!`);
+    setSuccessMsg(`User ${name} added to ${teamName} (${role.toUpperCase()}) successfully!`);
     setTimeout(() => {
       setSuccessMsg(null);
       setName('');
@@ -74,7 +82,7 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({ isOpen, onClose }) =
     <div id="add-user-modal-backdrop" className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-xs p-4 overflow-y-auto">
       <div 
         id="add-user-modal"
-        className="bg-white rounded-2xl shadow-xl max-w-lg w-full border border-slate-100 overflow-hidden animate-in fade-in zoom-in-95 duration-200"
+        className="bg-white rounded-2xl shadow-xl max-w-lg w-full border border-slate-100 overflow-hidden animate-in fade-in zoom-in-95 duration-200 my-8"
       >
         {/* Header */}
         <div className="bg-white border-b border-slate-100 px-6 py-5 flex items-center justify-between">
@@ -83,8 +91,8 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({ isOpen, onClose }) =
               <UserPlus className="w-4 h-4" />
             </div>
             <div>
-              <h2 className="text-base font-bold text-slate-900 tracking-tight">Add New Employee</h2>
-              <p className="text-xs text-slate-400">Onboard staff member to team roster & time-off system</p>
+              <h2 className="text-base font-bold text-slate-900 tracking-tight">Add New User</h2>
+              <p className="text-xs text-slate-400">Onboard staff member to team roster, duties & time-off system</p>
             </div>
           </div>
           <button 
@@ -97,7 +105,7 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({ isOpen, onClose }) =
         </div>
 
         {/* Modal Form */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+        <form onSubmit={handleSubmit} className="p-6 space-y-4 max-h-[80vh] overflow-y-auto">
           
           {errorMsg && (
             <div className="p-3 bg-rose-50 border border-rose-100 rounded-xl text-xs text-rose-700 flex items-center gap-2">
@@ -113,20 +121,59 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({ isOpen, onClose }) =
             </div>
           )}
 
-          {/* Locked Role Badge (User Requirement: Role is ALWAYS Employee) */}
-          <div className="p-3.5 bg-slate-50 border border-slate-200/80 rounded-xl flex items-center justify-between">
-            <div className="flex items-center gap-2.5">
-              <div className="w-7 h-7 rounded-lg bg-slate-200 text-slate-700 flex items-center justify-center">
-                <Shield className="w-3.5 h-3.5" />
-              </div>
-              <div>
-                <div className="text-xs font-bold text-slate-800">Assigned Role: Employee</div>
-                <div className="text-[11px] text-slate-500">Newly added users are always assigned the Employee role.</div>
-              </div>
+          {/* Role Selection */}
+          <div className="p-3.5 bg-slate-50 border border-slate-200/80 rounded-xl space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-800 flex items-center gap-2">
+                <Shield className="w-3.5 h-3.5 text-indigo-600" />
+                <span>Account Role & Access Level</span>
+              </span>
+              <span className="text-[10px] text-slate-400 font-medium">Can be changed later</span>
             </div>
-            <span className="px-2.5 py-1 text-[11px] font-bold uppercase rounded-md bg-white border border-slate-200 text-slate-700 shadow-2xs">
-              Employee (Fixed)
-            </span>
+            <div className="grid grid-cols-2 gap-2.5">
+              <button
+                type="button"
+                onClick={() => setRole('employee')}
+                className={`p-2.5 rounded-lg border text-left transition flex items-start gap-2.5 ${
+                  role === 'employee'
+                    ? 'bg-white border-indigo-600 ring-2 ring-indigo-500/20 text-indigo-950 shadow-xs'
+                    : 'bg-white/60 border-slate-200 text-slate-600 hover:bg-white'
+                }`}
+              >
+                <div className={`w-4 h-4 rounded-full border mt-0.5 flex items-center justify-center shrink-0 ${
+                  role === 'employee' ? 'border-indigo-600 bg-indigo-600 text-white' : 'border-slate-300'
+                }`}>
+                  {role === 'employee' && <div className="w-1.5 h-1.5 bg-white rounded-full" />}
+                </div>
+                <div>
+                  <div className="text-xs font-bold text-slate-900">Employee</div>
+                  <div className="text-[10px] text-slate-500 mt-0.5">Views roster, logs personal leave & overtime.</div>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setRole('manager')}
+                className={`p-2.5 rounded-lg border text-left transition flex items-start gap-2.5 ${
+                  role === 'manager'
+                    ? 'bg-white border-indigo-600 ring-2 ring-indigo-500/20 text-indigo-950 shadow-xs'
+                    : 'bg-white/60 border-slate-200 text-slate-600 hover:bg-white'
+                }`}
+              >
+                <div className={`w-4 h-4 rounded-full border mt-0.5 flex items-center justify-center shrink-0 ${
+                  role === 'manager' ? 'border-indigo-600 bg-indigo-600 text-white' : 'border-slate-300'
+                }`}>
+                  {role === 'manager' && <div className="w-1.5 h-1.5 bg-white rounded-full" />}
+                </div>
+                <div>
+                  <div className="text-xs font-bold text-indigo-900 flex items-center gap-1">
+                    <span>Manager</span>
+                    <span className="text-[9px] bg-indigo-100 text-indigo-700 px-1 rounded font-semibold">Admin</span>
+                  </div>
+                  <div className="text-[10px] text-slate-500 mt-0.5">Approves requests, publishes rosters, edits users.</div>
+                </div>
+              </button>
+            </div>
           </div>
 
           {/* Full Name & Email */}
@@ -274,10 +321,45 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({ isOpen, onClose }) =
             </div>
           </div>
 
-          {/* Initial Balances Overview */}
-          <div className="p-3 bg-slate-50 rounded-xl border border-slate-100 text-[11px] text-slate-600">
-            <span className="font-bold text-slate-800">Initial Entitlements: </span>
-            20d PTO, 10d Sick, 5d Personal, 0d Comp-Off (Earned via &gt;5h after-office shifts), 2d Floating Holiday.
+          {/* Initial Balances Customization */}
+          <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/70 space-y-2">
+            <span className="font-bold text-slate-800 text-xs block">Initial Annual Leave Quotas (Days)</span>
+            <div className="grid grid-cols-3 gap-2">
+              <div>
+                <label className="text-[10px] text-slate-500 font-semibold block mb-0.5">PTO Days</label>
+                <input
+                  type="number"
+                  min="0"
+                  max="60"
+                  value={initialPto}
+                  onChange={e => setInitialPto(Number(e.target.value))}
+                  className="w-full text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white text-slate-900 focus:outline-none focus:border-indigo-500 font-medium"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] text-slate-500 font-semibold block mb-0.5">Sick Leave</label>
+                <input
+                  type="number"
+                  min="0"
+                  max="30"
+                  value={initialSick}
+                  onChange={e => setInitialSick(Number(e.target.value))}
+                  className="w-full text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white text-slate-900 focus:outline-none focus:border-indigo-500 font-medium"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] text-slate-500 font-semibold block mb-0.5">Personal</label>
+                <input
+                  type="number"
+                  min="0"
+                  max="30"
+                  value={initialPersonal}
+                  onChange={e => setInitialPersonal(Number(e.target.value))}
+                  className="w-full text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white text-slate-900 focus:outline-none focus:border-indigo-500 font-medium"
+                />
+              </div>
+            </div>
+            <p className="text-[10px] text-slate-400">Comp-Off (0d) is earned dynamically when working &gt;5 hours after-office / weekend shifts.</p>
           </div>
 
           {/* Actions */}

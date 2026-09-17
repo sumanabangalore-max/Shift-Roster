@@ -6,6 +6,7 @@ import { TimeOffView } from './components/TimeOffView';
 import { RosterView } from './components/RosterView';
 import { OvertimeView } from './components/OvertimeView';
 import { NotificationsView } from './components/NotificationsView';
+import { UserManagementView } from './components/UserManagementView';
 import { RequestTimeOffModal } from './components/Modals/RequestTimeOffModal';
 import { RequestOvertimeModal } from './components/Modals/RequestOvertimeModal';
 import { EmailPreviewModal } from './components/Modals/EmailPreviewModal';
@@ -15,7 +16,7 @@ import { CreateRosterModal } from './components/Modals/CreateRosterModal';
 import { ManageRolesModal } from './components/Modals/ManageRolesModal';
 
 function MainApp() {
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'timeoff' | 'roster' | 'overtime' | 'notifications'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'timeoff' | 'roster' | 'overtime' | 'notifications' | 'users'>('dashboard');
   const [isTimeOffModalOpen, setIsTimeOffModalOpen] = useState(false);
   const [isOvertimeModalOpen, setIsOvertimeModalOpen] = useState(false);
   const [isEmailModalOpen, setIsEmailModalOpen] = useState(false);
@@ -73,6 +74,10 @@ function MainApp() {
           <OvertimeView
             onRequestOvertime={() => setIsOvertimeModalOpen(true)}
           />
+        )}
+
+        {activeTab === 'users' && (
+          <UserManagementView />
         )}
 
         {activeTab === 'notifications' && (

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { 
   Clock, 
@@ -22,7 +22,7 @@ import {
 interface DashboardViewProps {
   onRequestTimeOff: () => void;
   onRequestOvertime: () => void;
-  onNavigateTab: (tab: 'timeoff' | 'roster' | 'overtime' | 'notifications') => void;
+  onNavigateTab: (tab: 'timeoff' | 'roster' | 'overtime' | 'notifications' | 'users') => void;
   onOpenCreateRoster?: () => void;
   onOpenAddUser?: () => void;
   onOpenManageRoles?: () => void;
@@ -65,8 +65,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     year: 'numeric'
   }).format(today);
 
-  // Today's shift slot in the active roster
-  const todaySlot = roster.find(s => s.date === todayStr);
+  const availableTeams = ['Cloud Infra', 'SecOps', 'DSO', 'Network', 'Package Admin'];
+  const [selectedTeamToday, setSelectedTeamToday] = useState<string>(
+    currentUser.teamName && currentUser.teamName !== 'Management' ? currentUser.teamName : 'Cloud Infra'
+  );
+
+  // Today's shift slot in the active roster for the selected team
+  const todaySlot = roster.find(s => s.date === todayStr && s.teamName === selectedTeamToday) || 
+                    roster.find(s => s.date === todayStr);
 
   // Helper to find user info for a slot
   const getUser = (userId?: string) => users.find(u => u.id === userId);
@@ -86,15 +92,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   // Roster coverage conflicts (anyone on shift who has an active leave)
   const rosterConflictsToday = todaySlot ? [
     { type: 'Primary On-Call', userId: todaySlot.primaryUserId, name: todaySlot.primaryUserName },
-    { type: 'Secondary On-Call', userId: todaySlot.secondaryUserId, name: todaySlot.secondaryUserName },
-    { type: 'General Shift', userId: todaySlot.generalShiftUserId, name: todaySlot.generalShiftUserName }
+    { type: 'Secondary On-Call', userId: todaySlot.secondaryUserId, name: todaySlot.secondaryUserName }
   ].filter(duty => duty.userId && onLeaveToday.some(l => l.userId === duty.userId)) : [];
 
   // Employee-specific upcoming shifts
   const myUpcomingShifts = roster
     .filter(s => 
       s.date >= todayStr && 
-      (s.primaryUserId === currentUser.id || s.secondaryUserId === currentUser.id || s.generalShiftUserId === currentUser.id)
+      (s.primaryUserId === currentUser.id || s.secondaryUserId === currentUser.id)
     )
     .slice(0, 4);
 
@@ -104,7 +109,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     if (!slot) return '';
     if (slot.primaryUserId === currentUser.id) return 'Primary On-Call (10:00 AM – 7:30 PM)';
     if (slot.secondaryUserId === currentUser.id) return 'Secondary On-Call (8:00 AM – 5:30 PM)';
-    if (slot.generalShiftUserId === currentUser.id) return 'General Shift (9:00 AM – 6:30 PM)';
     return 'Assigned Shift';
   };
 
@@ -113,10 +117,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     if (slot.primaryUserId === currentUser.id) {
       return <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-100">Primary Lead</span>;
     }
-    if (slot.secondaryUserId === currentUser.id) {
-      return <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-100">Secondary Backup</span>;
-    }
-    return <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-sky-50 text-sky-700 border border-sky-100">General Ops</span>;
+    return <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-100">Secondary Backup</span>;
   };
 
   // Current employee's personal leave balance (strictly isolated)
@@ -193,6 +194,17 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             </button>
           )}
 
+          {isManager && (
+            <button
+              id="dash-user-mgmt-btn"
+              onClick={() => onNavigateTab('users')}
+              className="px-3.5 py-2 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 text-xs font-semibold rounded-lg shadow-2xs transition flex items-center gap-1.5 cursor-pointer"
+            >
+              <Users className="w-3.5 h-3.5 text-indigo-600" />
+              <span>User Directory</span>
+            </button>
+          )}
+
           <button
             id="dash-request-leave-btn"
             onClick={onRequestTimeOff}
@@ -244,7 +256,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   <span className="text-xs font-bold text-slate-800">
                     {nextShift.primaryUserId === currentUser.id && '10:00 AM – 7:30 PM'}
                     {nextShift.secondaryUserId === currentUser.id && '8:00 AM – 5:30 PM'}
-                    {nextShift.generalShiftUserId === currentUser.id && '9:00 AM – 6:30 PM'}
                   </span>
                 </div>
               </div>
@@ -280,7 +291,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       {/* SECTION 1: Who is on the shift for Today */}
       {/* ========================================================================= */}
       <section className="bg-white rounded-2xl p-6 border border-slate-100 shadow-xs space-y-4">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
             <h2 className="text-sm font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
               <span>Who Is On Shift Today</span>
@@ -289,21 +300,39 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               </span>
             </h2>
             <p className="text-xs text-slate-500 mt-0.5">
-              Active primary, secondary, and general shift roster assignments for the entire team
+              Active on-call roster assignments: Primary (10:00 AM – 7:30 PM) and Secondary (8:00 AM – 5:30 PM)
             </p>
           </div>
 
           <button
             onClick={() => onNavigateTab('roster')}
-            className="text-xs font-semibold text-indigo-600 hover:text-indigo-700 flex items-center gap-1"
+            className="text-xs font-semibold text-indigo-600 hover:text-indigo-700 flex items-center gap-1 cursor-pointer"
           >
             <span>Full Team Roster</span>
             <ArrowRight className="w-3.5 h-3.5" />
           </button>
         </div>
 
+        {/* Team Selector Pills */}
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 pt-1 border-t border-slate-100">
+          <span className="text-xs font-bold text-slate-400 uppercase tracking-wider mr-1 text-[10px]">Team:</span>
+          {availableTeams.map(t => (
+            <button
+              key={t}
+              onClick={() => setSelectedTeamToday(t)}
+              className={`px-3 py-1 rounded-lg text-xs font-semibold transition cursor-pointer ${
+                selectedTeamToday === t
+                  ? 'bg-indigo-600 text-white shadow-2xs'
+                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+              }`}
+            >
+              {t}
+            </button>
+          ))}
+        </div>
+
         {todaySlot ? (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             
             {/* Primary Shift */}
             {(() => {
@@ -313,7 +342,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
               return (
                 <div className={`p-4 rounded-xl border transition ${
-                  isMe ? 'bg-indigo-50/50 border-indigo-200' : 'bg-slate-50/70 border-slate-200/80'
+                  isMe ? 'bg-indigo-50/50 border-indigo-200 ring-1 ring-indigo-300' : 'bg-slate-50/70 border-slate-200/80'
                 }`}>
                   <div className="flex items-center justify-between mb-3">
                     <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-indigo-100 text-indigo-700">
@@ -334,7 +363,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                         {isMe && <span className="text-[10px] text-indigo-600 font-extrabold">(You)</span>}
                       </div>
                       <div className="text-[11px] text-slate-500 truncate">
-                        {u?.teamName ? `Team: ${u.teamName}` : 'Operations'}
+                        {u?.teamName ? `Team: ${u.teamName}` : `Team: ${selectedTeamToday}`} • {u?.jobTitle || 'Incident Lead'}
                       </div>
                     </div>
                   </div>
@@ -357,7 +386,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
               return (
                 <div className={`p-4 rounded-xl border transition ${
-                  isMe ? 'bg-emerald-50/50 border-emerald-200' : 'bg-slate-50/70 border-slate-200/80'
+                  isMe ? 'bg-emerald-50/50 border-emerald-200 ring-1 ring-emerald-300' : 'bg-slate-50/70 border-slate-200/80'
                 }`}>
                   <div className="flex items-center justify-between mb-3">
                     <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-emerald-100 text-emerald-700">
@@ -378,7 +407,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                         {isMe && <span className="text-[10px] text-emerald-600 font-extrabold">(You)</span>}
                       </div>
                       <div className="text-[11px] text-slate-500 truncate">
-                        {u?.teamName ? `Team: ${u.teamName}` : 'Operations'}
+                        {u?.teamName ? `Team: ${u.teamName}` : `Team: ${selectedTeamToday}`} • {u?.jobTitle || 'Backup Support'}
                       </div>
                     </div>
                   </div>
@@ -393,66 +422,16 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               );
             })()}
 
-            {/* General Shift */}
-            {(() => {
-              const u = getUser(todaySlot.generalShiftUserId);
-              const isMe = todaySlot.generalShiftUserId === currentUser.id;
-              const hasLeaveConflict = todaySlot.generalShiftUserId && onLeaveToday.some(l => l.userId === todaySlot.generalShiftUserId);
-
-              return (
-                <div className={`p-4 rounded-xl border transition ${
-                  isMe ? 'bg-sky-50/50 border-sky-200' : 'bg-slate-50/70 border-slate-200/80'
-                }`}>
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-sky-100 text-sky-700">
-                      General Shift
-                    </span>
-                    <span className="text-[11px] font-bold text-sky-600">9:00 AM – 6:30 PM</span>
-                  </div>
-
-                  {todaySlot.generalShiftUserName ? (
-                    <div className="flex items-center gap-3">
-                      <img 
-                        src={todaySlot.generalShiftUserAvatar || u?.avatar || 'https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?w=150'} 
-                        alt={todaySlot.generalShiftUserName} 
-                        className="w-10 h-10 rounded-full object-cover ring-2 ring-white"
-                      />
-                      <div className="min-w-0">
-                        <div className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
-                          <span className="truncate">{todaySlot.generalShiftUserName}</span>
-                          {isMe && <span className="text-[10px] text-sky-600 font-extrabold">(You)</span>}
-                        </div>
-                        <div className="text-[11px] text-slate-500 truncate">
-                          {u?.teamName ? `Team: ${u.teamName}` : 'Operations'}
-                        </div>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="text-xs text-slate-500 italic py-2">
-                      Weekend Standby (General Shift not scheduled on weekends)
-                    </div>
-                  )}
-
-                  {hasLeaveConflict && (
-                    <div className="mt-3 p-2 bg-amber-50 border border-amber-200 rounded-lg text-[11px] text-amber-900 flex items-center gap-1.5">
-                      <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-                      <span>On leave today.</span>
-                    </div>
-                  )}
-                </div>
-              );
-            })()}
-
           </div>
         ) : (
           <div className="p-6 bg-slate-50 rounded-xl border border-dashed border-slate-200 text-center space-y-3">
-            <p className="text-xs text-slate-500">No shift roster scheduled for today ({todayStr}).</p>
+            <p className="text-xs text-slate-500">No shift roster scheduled for {selectedTeamToday} on today ({todayStr}).</p>
             {isManager && onOpenCreateRoster && (
               <button
                 onClick={onOpenCreateRoster}
-                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-lg shadow-2xs transition"
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-lg shadow-2xs transition cursor-pointer"
               >
-                + Create Roster Now
+                + Create Roster for {selectedTeamToday}
               </button>
             )}
           </div>

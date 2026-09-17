@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import confetti from 'canvas-confetti';
 import { 
   User, 
+  UserRole,
   LeaveBalance, 
   LeaveRequest, 
   OvertimeRequest, 
@@ -37,17 +38,23 @@ interface AppContextType {
   // Actions
   switchUser: (userId: string) => void;
   updateUserRole: (userId: string, newRole: 'manager' | 'employee') => { success: boolean; error?: string };
-  createMonthlyRoster: (year: number, monthIndex: number, participantUserIds?: string[]) => { success: boolean; error?: string };
+  createMonthlyRoster: (year: number, monthIndex: number, targetTeam?: string, participantUserIds?: string[]) => { success: boolean; error?: string };
   addUser: (userData: {
     name: string;
     email: string;
     jobTitle: string;
+    role?: UserRole;
     teamName?: string;
     department?: string;
     avatar?: string;
     phone?: string;
     teamsHandle?: string;
+    initialPto?: number;
+    initialSick?: number;
+    initialPersonal?: number;
   }) => { success: boolean; user?: User; error?: string };
+  deleteUser: (userId: string) => { success: boolean; error?: string };
+  resetToCleanState: () => void;
   submitLeaveRequest: (data: {
     type: LeaveRequest['type'];
     startDate: string;
@@ -78,11 +85,11 @@ interface AppContextType {
     date: string, 
     primaryUserId: string, 
     secondaryUserId: string, 
-    generalShiftUserId?: string,
     notes?: string, 
-    shiftType?: ShiftSlotType
+    shiftType?: ShiftSlotType,
+    teamName?: string
   ) => void;
-  swapRosterShifts: (date1: string, date2: string, mode: 'primary' | 'secondary' | 'general' | 'all') => void;
+  swapRosterShifts: (date1: string, date2: string, mode: 'primary' | 'secondary' | 'all', teamName?: string) => void;
   
   triggerTeamsWebhook: (title: string, content: string, actionType: NotificationLog['actionType'], refId?: string) => Promise<{ success: boolean; error?: any } | void>;
   triggerEmailReminder: (recipientEmail?: string) => { count: number; emailContent: string };
@@ -98,15 +105,28 @@ interface AppContextType {
 const AppContext = createContext<AppContextType | null>(null);
 
 const STORAGE_KEYS = {
-  USERS: 'teamoff_users_v3',
-  CURRENT_USER_ID: 'teamoff_current_user_id_v3',
-  LEAVE_BALANCES: 'teamoff_leave_balances_v3',
-  LEAVE_REQUESTS: 'teamoff_leave_requests_v3',
-  OVERTIME_REQUESTS: 'teamoff_overtime_requests_v3',
-  ROSTER: 'teamoff_roster_v3',
-  NOTIFICATIONS: 'teamoff_notifications_v3',
-  WEBHOOK: 'teamoff_webhook_settings_v3',
-  EMAIL: 'teamoff_email_settings_v3',
+  USERS: 'teamoff_users_v4',
+  CURRENT_USER_ID: 'teamoff_current_user_id_v4',
+  LEAVE_BALANCES: 'teamoff_leave_balances_v4',
+  LEAVE_REQUESTS: 'teamoff_leave_requests_v4',
+  OVERTIME_REQUESTS: 'teamoff_overtime_requests_v4',
+  ROSTER: 'teamoff_roster_v5_teams',
+  NOTIFICATIONS: 'teamoff_notifications_v4',
+  WEBHOOK: 'teamoff_webhook_settings_v4',
+  EMAIL: 'teamoff_email_settings_v4',
+};
+
+const DEFAULT_FALLBACK_USER: User = {
+  id: 'usr_manager_1',
+  name: 'Suman',
+  email: 'suman.ailearn@gmail.com',
+  role: 'manager',
+  jobTitle: 'Engineering Manager',
+  teamName: 'Management',
+  department: 'Management',
+  avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+  phone: '+1 (555) 010-0001',
+  teamsHandle: '@suman'
 };
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -116,10 +136,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   });
   
   const [currentUserId, setCurrentUserId] = useState<string>(() => {
-    return localStorage.getItem(STORAGE_KEYS.CURRENT_USER_ID) || 'usr_sarah';
+    return localStorage.getItem(STORAGE_KEYS.CURRENT_USER_ID) || (INITIAL_USERS[0]?.id || 'usr_manager_1');
   });
 
-  const currentUser = users.find(u => u.id === currentUserId) || users[0];
+  const currentUser = users.find(u => u.id === currentUserId) || users[0] || DEFAULT_FALLBACK_USER;
 
   const [leaveBalances, setLeaveBalances] = useState<Record<string, LeaveBalance>>(() => {
     const saved = localStorage.getItem(STORAGE_KEYS.LEAVE_BALANCES);
@@ -227,54 +247,78 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   // Manager creates a new roster
-  const createMonthlyRoster = (year: number, monthIndex: number, participantUserIds?: string[]) => {
+  const createMonthlyRoster = (year: number, monthIndex: number, targetTeam: string = 'all', participantUserIds?: string[]) => {
     if (currentUser.role !== 'manager') {
       return { success: false, error: 'Permission denied. Only managers can create rosters.' };
     }
-    const staff = participantUserIds && participantUserIds.length > 0
-      ? users.filter(u => participantUserIds.includes(u.id))
-      : users;
+    const monthStr = (monthIndex + 1) < 10 ? `0${monthIndex + 1}` : `${monthIndex + 1}`;
+    const prefix = `${year}-${monthStr}`;
 
-    const newSlots = generateMonthlyRoster(year, monthIndex, staff);
-    setRoster(newSlots);
+    let newSlots: DailyRosterSlot[] = [];
+
+    if (!targetTeam || targetTeam === 'all') {
+      const staff = participantUserIds && participantUserIds.length > 0
+        ? users.filter(u => participantUserIds.includes(u.id))
+        : users;
+      newSlots = generateMonthlyRoster(year, monthIndex, staff);
+      setRoster(prev => {
+        const remaining = prev.filter(s => !s.date.startsWith(prefix));
+        return [...remaining, ...newSlots];
+      });
+    } else {
+      const staff = participantUserIds && participantUserIds.length > 0
+        ? users.filter(u => participantUserIds.includes(u.id))
+        : users.filter(u => u.teamName === targetTeam);
+      newSlots = generateMonthlyRoster(year, monthIndex, staff, targetTeam);
+      setRoster(prev => {
+        const remaining = prev.filter(s => !(s.date.startsWith(prefix) && s.teamName === targetTeam));
+        return [...remaining, ...newSlots];
+      });
+    }
 
     const monthName = new Date(year, monthIndex, 1).toLocaleString('default', { month: 'long' });
     try {
       confetti({ particleCount: 60, spread: 70, origin: { y: 0.7 } });
     } catch {}
 
+    const teamLabel = (!targetTeam || targetTeam === 'all') ? 'All Teams' : targetTeam;
     triggerTeamsWebhook(
-      `🗓️ New Roster Published for ${monthName} ${year}`,
-      `${currentUser.name} generated and published a new 3-shift duty roster with ${newSlots.length} schedule slots.`,
+      `🗓️ New Roster Published for ${monthName} ${year} (${teamLabel})`,
+      `${currentUser.name} generated and published an on-call duty roster (Primary & Secondary) with ${newSlots.length} schedule slots for ${teamLabel}.`,
       'roster_alert'
     );
     return { success: true };
   };
 
-  // Admin or Manager adds a new user. Role is initially Employee.
+  // Admin or Manager adds a new user with customizable role and leave balances
   const addUser = (userData: {
     name: string;
     email: string;
     jobTitle: string;
+    role?: UserRole;
     teamName?: string;
     department?: string;
     avatar?: string;
     phone?: string;
     teamsHandle?: string;
+    initialPto?: number;
+    initialSick?: number;
+    initialPersonal?: number;
   }) => {
     if (currentUser.role !== 'manager') {
-      return { success: false, error: 'Permission denied. Only managers can add employees.' };
+      return { success: false, error: 'Permission denied. Only managers can add users.' };
     }
 
     const newId = `usr_${Date.now()}`;
     const defaultAvatar = userData.avatar?.trim() || `https://images.unsplash.com/photo-${1534528741775 + (users.length * 1000)}?w=150&auto=format&fit=crop&q=80`;
     const resolvedTeam = (userData.teamName || userData.department || 'Cloud Infra').trim();
+    const assignedRole: UserRole = userData.role || 'employee';
 
     const newUser: User = {
       id: newId,
       name: userData.name.trim(),
       email: userData.email.trim(),
-      role: 'employee', // Role is initially Employee
+      role: assignedRole,
       jobTitle: userData.jobTitle.trim() || 'Software Engineer',
       teamName: resolvedTeam,
       department: resolvedTeam,
@@ -283,12 +327,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       teamsHandle: userData.teamsHandle?.trim() || `@${userData.name.toLowerCase().replace(/\s+/g, '.')}`
     };
 
-    // Initialize default leave balance
+    // Initialize leave balance
     const initialBal: LeaveBalance = {
       userId: newId,
-      pto: { total: 20, used: 0, pending: 0 },
-      sick: { total: 10, used: 0, pending: 0 },
-      personal: { total: 5, used: 0, pending: 0 },
+      pto: { total: userData.initialPto ?? 20, used: 0, pending: 0 },
+      sick: { total: userData.initialSick ?? 10, used: 0, pending: 0 },
+      personal: { total: userData.initialPersonal ?? 5, used: 0, pending: 0 },
       compOff: { total: 0, used: 0, pending: 0 },
       floatingHoliday: { total: 2, used: 0, pending: 0 }
     };
@@ -302,11 +346,82 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     triggerTeamsWebhook(
       `👋 New Team Member Added: ${newUser.name}`,
-      `${currentUser.name} onboarded ${newUser.name} into team ${newUser.teamName} as ${newUser.jobTitle}. Assigned role: Employee.`,
+      `${currentUser.name} onboarded ${newUser.name} into team ${newUser.teamName} as ${newUser.jobTitle} (Role: ${assignedRole.toUpperCase()}).`,
       'roster_alert'
     );
 
     return { success: true, user: newUser };
+  };
+
+  // Remove a user from the system
+  const deleteUser = (userId: string): { success: boolean; error?: string } => {
+    if (currentUser.role !== 'manager') {
+      return { success: false, error: 'Permission denied. Only managers can remove users.' };
+    }
+
+    if (users.length <= 1) {
+      return { success: false, error: 'Cannot remove the only user. The system must retain at least one user.' };
+    }
+
+    const targetUser = users.find(u => u.id === userId);
+    if (!targetUser) {
+      return { success: false, error: 'User not found.' };
+    }
+
+    // Remove user
+    const remainingUsers = users.filter(u => u.id !== userId);
+    setUsers(remainingUsers);
+
+    // Clean up leave balances
+    setLeaveBalances(prev => {
+      const copy = { ...prev };
+      delete copy[userId];
+      return copy;
+    });
+
+    // If current logged-in user is being deleted, gracefully switch to first remaining user
+    if (currentUserId === userId) {
+      setCurrentUserId(remainingUsers[0].id);
+    }
+
+    // Clean up roster slot references so deleted user does not cause issues
+    setRoster(prev => prev.map(slot => ({
+      ...slot,
+      primaryUserId: slot.primaryUserId === userId ? (remainingUsers[0]?.id || '') : slot.primaryUserId,
+      primaryUserName: slot.primaryUserId === userId ? (remainingUsers[0]?.name || 'Unassigned') : slot.primaryUserName,
+      primaryUserAvatar: slot.primaryUserId === userId ? remainingUsers[0]?.avatar : slot.primaryUserAvatar,
+      secondaryUserId: slot.secondaryUserId === userId ? (remainingUsers[1]?.id || remainingUsers[0]?.id || '') : slot.secondaryUserId,
+      secondaryUserName: slot.secondaryUserId === userId ? (remainingUsers[1]?.name || remainingUsers[0]?.name || 'Unassigned') : slot.secondaryUserName,
+      secondaryUserAvatar: slot.secondaryUserId === userId ? (remainingUsers[1]?.avatar || remainingUsers[0]?.avatar) : slot.secondaryUserAvatar,
+    })));
+
+    triggerTeamsWebhook(
+      `🗑️ Team Member Removed: ${targetUser.name}`,
+      `${currentUser.name} removed ${targetUser.name} (${targetUser.teamName}) from the roster system.`,
+      'roster_alert'
+    );
+
+    return { success: true };
+  };
+
+  // Reset to clean slate (no dummy users, clean manager Suman only)
+  const resetToCleanState = () => {
+    setUsers(INITIAL_USERS);
+    setCurrentUserId(INITIAL_USERS[0].id);
+    setLeaveBalances(INITIAL_LEAVE_BALANCES);
+    setLeaveRequests([]);
+    setOvertimeRequests([]);
+    setNotifications([]);
+    setRoster(generateMonthlyRoster(2026, 8, INITIAL_USERS));
+    localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(INITIAL_USERS));
+    localStorage.setItem(STORAGE_KEYS.CURRENT_USER_ID, INITIAL_USERS[0].id);
+    localStorage.setItem(STORAGE_KEYS.LEAVE_BALANCES, JSON.stringify(INITIAL_LEAVE_BALANCES));
+    localStorage.setItem(STORAGE_KEYS.LEAVE_REQUESTS, JSON.stringify([]));
+    localStorage.setItem(STORAGE_KEYS.OVERTIME_REQUESTS, JSON.stringify([]));
+    localStorage.setItem(STORAGE_KEYS.NOTIFICATIONS, JSON.stringify([]));
+    try {
+      confetti({ particleCount: 50, spread: 60, origin: { y: 0.6 } });
+    } catch {}
   };
 
   const getUserLeaveBalance = (userId: string): LeaveBalance | undefined => {
@@ -316,7 +431,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const checkRosterConflict = (userId: string, startDate: string, endDate: string) => {
     const conflictingSlots = roster.filter(slot => {
       if (slot.date >= startDate && slot.date <= endDate) {
-        return slot.primaryUserId === userId || slot.secondaryUserId === userId || slot.generalShiftUserId === userId;
+        return slot.primaryUserId === userId || slot.secondaryUserId === userId;
       }
       return false;
     });
@@ -325,8 +440,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const datesDesc = conflictingSlots.map(s => {
         const role = s.primaryUserId === userId 
           ? 'Primary On-Call (10:00 AM - 7:30 PM)' 
-          : (s.secondaryUserId === userId ? 'Secondary On-Call (8:00 AM - 5:30 PM)' : 'General Shift (9:00 AM - 6:30 PM)');
-        return `${s.date} (${s.dayOfWeek}: ${role})`;
+          : 'Secondary On-Call (8:00 AM - 5:30 PM)';
+        return `${s.date} (${s.teamName || 'Team'} - ${s.dayOfWeek}: ${role})`;
       }).join(', ');
       return {
         hasConflict: true,
@@ -787,9 +902,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     date: string, 
     primaryUserId: string, 
     secondaryUserId: string, 
-    generalShiftUserId?: string,
     notes?: string, 
-    shiftType?: ShiftSlotType
+    shiftType?: ShiftSlotType,
+    teamName?: string
   ) => {
     if (currentUser.role !== 'manager') {
       alert('Only managers have permission to edit the roster.');
@@ -798,10 +913,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const primUser = users.find(u => u.id === primaryUserId);
     const secUser = users.find(u => u.id === secondaryUserId);
-    const genUser = generalShiftUserId ? users.find(u => u.id === generalShiftUserId) : undefined;
 
     setRoster(prev => prev.map(slot => {
-      if (slot.date === date) {
+      const match = slot.date === date && (!teamName || slot.teamName === teamName);
+      if (match) {
         return {
           ...slot,
           primaryUserId,
@@ -810,9 +925,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           secondaryUserId,
           secondaryUserName: secUser?.name || slot.secondaryUserName,
           secondaryUserAvatar: secUser?.avatar || slot.secondaryUserAvatar,
-          generalShiftUserId: generalShiftUserId !== undefined ? generalShiftUserId : slot.generalShiftUserId,
-          generalShiftUserName: genUser?.name || slot.generalShiftUserName,
-          generalShiftUserAvatar: genUser?.avatar || slot.generalShiftUserAvatar,
           notes: notes !== undefined ? notes : slot.notes,
           shiftType: shiftType || slot.shiftType
         };
@@ -822,25 +934,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     if (webhookSettings.notifyOnRosterConflict) {
       triggerTeamsWebhook(
-        `🛡️ Shift Assignment Updated for ${date}`,
-        `Primary (10:00-19:30): ${primUser?.name}, Secondary (08:00-17:30): ${secUser?.name}, General (09:00-18:30): ${genUser?.name || 'N/A'}.`,
+        `🛡️ Shift Assignment Updated for ${date} (${teamName || 'Team'})`,
+        `Primary (10:00-19:30): ${primUser?.name}, Secondary (08:00-17:30): ${secUser?.name}.`,
         'roster_alert'
       );
     }
   };
 
-  const swapRosterShifts = (date1: string, date2: string, mode: 'primary' | 'secondary' | 'general' | 'all') => {
+  const swapRosterShifts = (date1: string, date2: string, mode: 'primary' | 'secondary' | 'all', teamName?: string) => {
     if (currentUser.role !== 'manager') {
       alert('Only managers have permission to modify shift swaps.');
       return;
     }
 
-    const slot1 = roster.find(s => s.date === date1);
-    const slot2 = roster.find(s => s.date === date2);
+    const slot1 = roster.find(s => s.date === date1 && (!teamName || s.teamName === teamName));
+    const slot2 = roster.find(s => s.date === date2 && (!teamName || s.teamName === teamName));
     if (!slot1 || !slot2) return;
 
     setRoster(prev => prev.map(slot => {
-      if (slot.date === date1) {
+      if (slot.date === date1 && (!teamName || slot.teamName === teamName)) {
         return {
           ...slot,
           primaryUserId: (mode === 'primary' || mode === 'all') ? slot2.primaryUserId : slot.primaryUserId,
@@ -849,12 +961,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           secondaryUserId: (mode === 'secondary' || mode === 'all') ? slot2.secondaryUserId : slot.secondaryUserId,
           secondaryUserName: (mode === 'secondary' || mode === 'all') ? slot2.secondaryUserName : slot.secondaryUserName,
           secondaryUserAvatar: (mode === 'secondary' || mode === 'all') ? slot2.secondaryUserAvatar : slot.secondaryUserAvatar,
-          generalShiftUserId: (mode === 'general' || mode === 'all') ? slot2.generalShiftUserId : slot.generalShiftUserId,
-          generalShiftUserName: (mode === 'general' || mode === 'all') ? slot2.generalShiftUserName : slot.generalShiftUserName,
-          generalShiftUserAvatar: (mode === 'general' || mode === 'all') ? slot2.generalShiftUserAvatar : slot.generalShiftUserAvatar,
         };
       }
-      if (slot.date === date2) {
+      if (slot.date === date2 && (!teamName || slot.teamName === teamName)) {
         return {
           ...slot,
           primaryUserId: (mode === 'primary' || mode === 'all') ? slot1.primaryUserId : slot.primaryUserId,
@@ -863,16 +972,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           secondaryUserId: (mode === 'secondary' || mode === 'all') ? slot1.secondaryUserId : slot.secondaryUserId,
           secondaryUserName: (mode === 'secondary' || mode === 'all') ? slot1.secondaryUserName : slot.secondaryUserName,
           secondaryUserAvatar: (mode === 'secondary' || mode === 'all') ? slot1.secondaryUserAvatar : slot.secondaryUserAvatar,
-          generalShiftUserId: (mode === 'general' || mode === 'all') ? slot1.generalShiftUserId : slot.generalShiftUserId,
-          generalShiftUserName: (mode === 'general' || mode === 'all') ? slot1.generalShiftUserName : slot.generalShiftUserName,
-          generalShiftUserAvatar: (mode === 'general' || mode === 'all') ? slot1.generalShiftUserAvatar : slot.generalShiftUserAvatar,
         };
       }
       return slot;
     }));
 
     triggerTeamsWebhook(
-      `🔄 Shift Swap Confirmed (${date1} ⇄ ${date2})`,
+      `🔄 Shift Swap Confirmed (${date1} ⇄ ${date2}) - ${teamName || 'Team'}`,
       `Shift handover swap completed for ${mode.toUpperCase()} roles between ${date1} and ${date2}.`,
       'roster_alert'
     );
@@ -938,6 +1044,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updateUserRole,
         createMonthlyRoster,
         addUser,
+        deleteUser,
+        resetToCleanState,
         submitLeaveRequest,
         approveLeaveRequest,
         rejectLeaveRequest,

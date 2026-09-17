@@ -105,7 +105,7 @@ export interface OvertimeRequest {
   managerNotes?: string;
 }
 
-export type ShiftSlotType = 'primary_oncall' | 'secondary_oncall' | 'general_shift' | 'custom_shift';
+export type ShiftSlotType = 'primary_oncall' | 'secondary_oncall' | 'custom_shift';
 
 export interface ShiftTimingDefinition {
   type: ShiftSlotType;
@@ -137,40 +137,29 @@ const secondaryShift: ShiftTimingDefinition = {
   badgeColor: 'emerald'
 };
 
-const generalShift: ShiftTimingDefinition = {
-  type: 'general_shift',
-  name: 'General Shift',
-  startTime: '09:00',
-  endTime: '18:30',
-  displayHours: '9:00 AM – 6:30 PM',
-  display: '09:00 - 18:30',
-  badgeColor: 'sky'
-};
-
-export const SHIFT_TIMINGS: Record<'primary' | 'secondary' | 'general' | 'PRIMARY' | 'SECONDARY' | 'GENERAL', ShiftTimingDefinition> = {
+export const SHIFT_TIMINGS: Record<'primary' | 'secondary' | 'PRIMARY' | 'SECONDARY', ShiftTimingDefinition> = {
   primary: primaryShift,
   secondary: secondaryShift,
-  general: generalShift,
   PRIMARY: primaryShift,
-  SECONDARY: secondaryShift,
-  GENERAL: generalShift
+  SECONDARY: secondaryShift
 };
 
 export interface DailyRosterSlot {
   date: string; // YYYY-MM-DD
   dayOfWeek: string; // 'Monday', 'Tuesday', ..., 'Sunday'
+  teamName: string; // Grouping: 'Cloud Infra', 'SecOps', 'DSO', 'Network', 'Package Admin', etc.
   
   // Primary on-call: 10:00 AM - 7:30 PM
   primaryUserId: string;
   primaryUserName: string;
-  primaryUserAvatar: string;
+  primaryUserAvatar?: string;
   
   // Secondary on-call: 8:00 AM - 5:30 PM
   secondaryUserId: string;
   secondaryUserName: string;
-  secondaryUserAvatar: string;
+  secondaryUserAvatar?: string;
 
-  // General shift: 9:00 AM - 6:30 PM
+  // Optional legacy compatibility
   generalShiftUserId?: string;
   generalShiftUserName?: string;
   generalShiftUserAvatar?: string;

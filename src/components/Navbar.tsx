@@ -18,8 +18,8 @@ import {
 } from 'lucide-react';
 
 interface NavbarProps {
-  activeTab: 'dashboard' | 'timeoff' | 'roster' | 'overtime' | 'notifications';
-  setActiveTab: (tab: 'dashboard' | 'timeoff' | 'roster' | 'overtime' | 'notifications') => void;
+  activeTab: 'dashboard' | 'timeoff' | 'roster' | 'overtime' | 'notifications' | 'users';
+  setActiveTab: (tab: 'dashboard' | 'timeoff' | 'roster' | 'overtime' | 'notifications' | 'users') => void;
   onRequestTimeOff: () => void;
   onRequestOvertime: () => void;
   onOpenEmailPreview: () => void;
@@ -127,17 +127,34 @@ export const Navbar: React.FC<NavbarProps> = ({
                 )}
               </button>
 
-              <button
-                id="nav-tab-notifications"
-                onClick={() => setActiveTab('notifications')}
-                className={`py-1 transition relative flex items-center gap-1.5 ${
-                  activeTab === 'notifications'
-                    ? 'text-indigo-600 font-semibold border-b-2 border-indigo-600'
-                    : 'text-slate-500 hover:text-slate-900'
-                }`}
-              >
-                <span>Settings & Webhooks</span>
-              </button>
+              {currentUser.role === 'manager' && (
+                <>
+                  <button
+                    id="nav-tab-users"
+                    onClick={() => setActiveTab('users')}
+                    className={`py-1 transition relative flex items-center gap-1.5 ${
+                      activeTab === 'users'
+                        ? 'text-indigo-600 font-semibold border-b-2 border-indigo-600'
+                        : 'text-slate-500 hover:text-slate-900'
+                    }`}
+                  >
+                    <Users className="w-4 h-4" />
+                    <span>User Management</span>
+                  </button>
+
+                  <button
+                    id="nav-tab-notifications"
+                    onClick={() => setActiveTab('notifications')}
+                    className={`py-1 transition relative flex items-center gap-1.5 ${
+                      activeTab === 'notifications'
+                        ? 'text-indigo-600 font-semibold border-b-2 border-indigo-600'
+                        : 'text-slate-500 hover:text-slate-900'
+                    }`}
+                  >
+                    <span>Webhook & Settings</span>
+                  </button>
+                </>
+              )}
             </nav>
           </div>
 
@@ -337,14 +354,29 @@ export const Navbar: React.FC<NavbarProps> = ({
         >
           Overtime {currentUser.role === 'manager' && pendingOTCount > 0 && `(${pendingOTCount})`}
         </button>
-        <button
-          onClick={() => setActiveTab('notifications')}
-          className={`px-3 py-1.5 text-xs font-medium rounded-lg whitespace-nowrap ${
-            activeTab === 'notifications' ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:bg-slate-200'
-          }`}
-        >
-          Settings
-        </button>
+        {currentUser.role === 'manager' && (
+          <>
+            <button
+              id="mobile-nav-tab-users"
+              onClick={() => setActiveTab('users')}
+              className={`px-3 py-1.5 text-xs font-medium rounded-lg whitespace-nowrap flex items-center gap-1 ${
+                activeTab === 'users' ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:bg-slate-200'
+              }`}
+            >
+              <Users className="w-3.5 h-3.5" />
+              <span>Users</span>
+            </button>
+            <button
+              id="mobile-nav-tab-notifications"
+              onClick={() => setActiveTab('notifications')}
+              className={`px-3 py-1.5 text-xs font-medium rounded-lg whitespace-nowrap ${
+                activeTab === 'notifications' ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:bg-slate-200'
+              }`}
+            >
+              Webhook & Settings
+            </button>
+          </>
+        )}
       </div>
     </header>
   );

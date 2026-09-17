@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
 import { DailyRosterSlot, ShiftSlotType, SHIFT_TIMINGS } from '../../types';
-import { Shield, Users, Calendar, AlertTriangle, CheckCircle2, X, Clock } from 'lucide-react';
+import { Shield, Users, Calendar, AlertTriangle, CheckCircle2, X, Clock, Layers } from 'lucide-react';
 
 interface RosterEditModalProps {
   slot: DailyRosterSlot | null;
@@ -14,7 +14,6 @@ export const RosterEditModal: React.FC<RosterEditModalProps> = ({ slot, isOpen, 
 
   const [primaryId, setPrimaryId] = useState('');
   const [secondaryId, setSecondaryId] = useState('');
-  const [generalShiftId, setGeneralShiftId] = useState('');
   const [shiftType, setShiftType] = useState<ShiftSlotType>('day_core');
   const [notes, setNotes] = useState('');
 
@@ -22,7 +21,6 @@ export const RosterEditModal: React.FC<RosterEditModalProps> = ({ slot, isOpen, 
     if (slot) {
       setPrimaryId(slot.primaryUserId || '');
       setSecondaryId(slot.secondaryUserId || '');
-      setGeneralShiftId(slot.generalShiftUserId || '');
       setShiftType(slot.shiftType);
       setNotes(slot.notes || '');
     }
@@ -47,14 +45,6 @@ export const RosterEditModal: React.FC<RosterEditModalProps> = ({ slot, isOpen, 
     slot.date <= r.endDate
   );
 
-  const generalOnLeave = generalShiftId ? leaveRequests.find(r => 
-    r.userId === generalShiftId && 
-    r.status !== 'rejected' && 
-    r.status !== 'cancelled' &&
-    slot.date >= r.startDate && 
-    slot.date <= r.endDate
-  ) : undefined;
-
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (primaryId === secondaryId) {
@@ -66,12 +56,16 @@ export const RosterEditModal: React.FC<RosterEditModalProps> = ({ slot, isOpen, 
       slot.date, 
       primaryId, 
       secondaryId, 
-      generalShiftId || undefined, 
       notes, 
-      shiftType
+      shiftType,
+      slot.teamName
     );
     onClose();
   };
+
+  const slotTeam = slot.teamName || 'Cloud Infra';
+  const teamUsers = users.filter(u => u.teamName === slotTeam);
+  const otherUsers = users.filter(u => u.teamName !== slotTeam);
 
   return (
     <div id="roster-edit-modal-backdrop" className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-xs p-4 overflow-y-auto">
@@ -86,7 +80,12 @@ export const RosterEditModal: React.FC<RosterEditModalProps> = ({ slot, isOpen, 
               <Shield className="w-4 h-4" />
             </div>
             <div>
-              <h2 className="text-base font-bold text-slate-900 tracking-tight">Assign Daily Shift Coverage</h2>
+              <div className="flex items-center gap-2">
+                <h2 className="text-base font-bold text-slate-900 tracking-tight">Assign Daily Shift Coverage</h2>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-100">
+                  {slotTeam}
+                </span>
+              </div>
               <p className="text-xs text-slate-400">
                 {slot.dayOfWeek}, {slot.date} {slot.isHoliday ? `(${slot.holidayName})` : ''}
               </p>
@@ -105,22 +104,21 @@ export const RosterEditModal: React.FC<RosterEditModalProps> = ({ slot, isOpen, 
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
           {/* Shift Schedule Reference */}
           <div className="p-3 bg-slate-50 border border-slate-100 rounded-xl space-y-1.5 text-xs">
-            <div className="font-semibold text-slate-700 flex items-center gap-1.5">
-              <Clock className="w-3.5 h-3.5 text-indigo-600" />
-              <span>Standard Shift Timings</span>
+            <div className="font-semibold text-slate-700 flex items-center justify-between">
+              <div className="flex items-center gap-1.5">
+                <Clock className="w-3.5 h-3.5 text-indigo-600" />
+                <span>Standard Shift Timings (Primary & Secondary Only)</span>
+              </div>
+              <span className="text-[10px] text-slate-500 font-medium">Team: {slotTeam}</span>
             </div>
-            <div className="grid grid-cols-3 gap-2 text-[11px] text-slate-600 pt-1">
-              <div>
-                <span className="font-bold text-indigo-700 block">Primary:</span>
-                <span>{SHIFT_TIMINGS.PRIMARY.display}</span>
+            <div className="grid grid-cols-2 gap-2 text-[11px] text-slate-600 pt-1">
+              <div className="bg-white p-2 rounded-lg border border-indigo-100">
+                <span className="font-bold text-indigo-700 block">Primary On-Call:</span>
+                <span>{SHIFT_TIMINGS.PRIMARY.display} (Lead)</span>
               </div>
-              <div>
-                <span className="font-bold text-emerald-700 block">Secondary:</span>
-                <span>{SHIFT_TIMINGS.SECONDARY.display}</span>
-              </div>
-              <div>
-                <span className="font-bold text-sky-700 block">General:</span>
-                <span>{SHIFT_TIMINGS.GENERAL.display}</span>
+              <div className="bg-white p-2 rounded-lg border border-emerald-100">
+                <span className="font-bold text-emerald-700 block">Secondary On-Call:</span>
+                <span>{SHIFT_TIMINGS.SECONDARY.display} (Backup)</span>
               </div>
             </div>
           </div>
@@ -148,11 +146,22 @@ export const RosterEditModal: React.FC<RosterEditModalProps> = ({ slot, isOpen, 
                 primaryOnLeave ? 'border-rose-300 bg-rose-50/40 ring-1 ring-rose-300' : 'border-slate-200 focus:ring-2 focus:ring-indigo-500'
               }`}
             >
-              {users.map(u => (
-                <option key={u.id} value={u.id}>
-                  {u.name} — {u.jobTitle} ({u.role.toUpperCase()})
-                </option>
-              ))}
+              <optgroup label={`${slotTeam} Engineers`}>
+                {teamUsers.map(u => (
+                  <option key={u.id} value={u.id}>
+                    {u.name} — {u.jobTitle} ({u.role.toUpperCase()})
+                  </option>
+                ))}
+              </optgroup>
+              {otherUsers.length > 0 && (
+                <optgroup label="Other Department Engineers">
+                  {otherUsers.map(u => (
+                    <option key={u.id} value={u.id}>
+                      {u.name} ({u.teamName}) — {u.jobTitle}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
             </select>
           </div>
 
@@ -179,43 +188,22 @@ export const RosterEditModal: React.FC<RosterEditModalProps> = ({ slot, isOpen, 
                 secondaryOnLeave ? 'border-rose-300 bg-rose-50/40 ring-1 ring-rose-300' : 'border-slate-200 focus:ring-2 focus:ring-indigo-500'
               }`}
             >
-              {users.map(u => (
-                <option key={u.id} value={u.id}>
-                  {u.name} — {u.jobTitle} ({u.role.toUpperCase()})
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* General Shift */}
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between">
-              <label className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-sky-600 inline-block"></span>
-                <span>General Shift ({SHIFT_TIMINGS.GENERAL.display})</span>
-              </label>
-              {generalOnLeave && (
-                <span className="text-[10px] font-semibold text-rose-600 flex items-center gap-1">
-                  <AlertTriangle className="w-3 h-3" />
-                  <span>On Leave ({generalOnLeave.type})</span>
-                </span>
+              <optgroup label={`${slotTeam} Engineers`}>
+                {teamUsers.map(u => (
+                  <option key={u.id} value={u.id}>
+                    {u.name} — {u.jobTitle} ({u.role.toUpperCase()})
+                  </option>
+                ))}
+              </optgroup>
+              {otherUsers.length > 0 && (
+                <optgroup label="Other Department Engineers">
+                  {otherUsers.map(u => (
+                    <option key={u.id} value={u.id}>
+                      {u.name} ({u.teamName}) — {u.jobTitle}
+                    </option>
+                  ))}
+                </optgroup>
               )}
-            </div>
-
-            <select
-              id="select-general-user"
-              value={generalShiftId}
-              onChange={(e) => setGeneralShiftId(e.target.value)}
-              className={`w-full text-xs font-medium border rounded-lg px-3 py-2 bg-white text-slate-800 ${
-                generalOnLeave ? 'border-rose-300 bg-rose-50/40 ring-1 ring-rose-300' : 'border-slate-200 focus:ring-2 focus:ring-indigo-500'
-              }`}
-            >
-              <option value="">-- No General Shift (Weekend / Standby) --</option>
-              {users.map(u => (
-                <option key={u.id} value={u.id}>
-                  {u.name} — {u.jobTitle} ({u.role.toUpperCase()})
-                </option>
-              ))}
             </select>
           </div>
 
@@ -229,13 +217,13 @@ export const RosterEditModal: React.FC<RosterEditModalProps> = ({ slot, isOpen, 
               rows={2}
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              placeholder="e.g., Primary leads SEV incident alarms; Secondary assists QA build verification."
+              placeholder="e.g., Primary leads alarms response; Secondary monitors service pipelines."
               className="w-full text-xs border border-slate-200 rounded-lg p-3 bg-white text-slate-800 focus:ring-2 focus:ring-indigo-500 placeholder:text-slate-400"
             />
           </div>
 
           {/* Conflict warnings */}
-          {(primaryOnLeave || secondaryOnLeave || generalOnLeave) && (
+          {(primaryOnLeave || secondaryOnLeave) && (
             <div className="p-3 bg-amber-50 border border-amber-100 rounded-xl text-xs text-amber-900 space-y-1">
               <div className="font-semibold flex items-center gap-1.5 text-amber-950">
                 <AlertTriangle className="w-4 h-4 text-amber-600" />
@@ -260,7 +248,7 @@ export const RosterEditModal: React.FC<RosterEditModalProps> = ({ slot, isOpen, 
             <button
               type="submit"
               id="save-roster-assignment-btn"
-              className="px-4 py-2 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-2xs transition flex items-center gap-1.5"
+              className="px-4 py-2 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-2xs transition flex items-center gap-1.5 cursor-pointer"
             >
               <CheckCircle2 className="w-3.5 h-3.5" />
               <span>Update Assignment</span>
