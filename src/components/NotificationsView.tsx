@@ -18,7 +18,11 @@ import {
   ChevronUp,
   Copy,
   Calendar,
-  UserCheck
+  UserCheck,
+  Server,
+  Terminal,
+  Layers,
+  Cpu
 } from 'lucide-react';
 import { EmailPreviewModal } from './Modals/EmailPreviewModal';
 import { TeamsCardModal } from './Modals/TeamsCardModal';
@@ -44,6 +48,13 @@ export const NotificationsView: React.FC = () => {
   const ACME_WEBHOOK_URL = 'https://acmecorp.webhook.office.com/webhookb2/01b8a92/IncomingWebhook/48194a0f';
 
   const [copied, setCopied] = useState(false);
+  const [copiedCmd, setCopiedCmd] = useState<string | null>(null);
+
+  const handleCopyCmd = (cmd: string, key: string) => {
+    navigator.clipboard.writeText(cmd);
+    setCopiedCmd(key);
+    setTimeout(() => setCopiedCmd(null), 2000);
+  };
 
   const handleCopyUrl = () => {
     navigator.clipboard.writeText(webhookSettings.teamsWebhookUrl || ACME_WEBHOOK_URL);
@@ -443,6 +454,97 @@ export const NotificationsView: React.FC = () => {
                   <strong className="text-white">New Employee Added:</strong> Posts an onboarding welcome announcement with team assignment (Cloud Infra, DSO, Network, SecOps, Package Admin, Management).
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Docker Desktop Run Guide */}
+      <div className="bg-slate-900 text-white rounded-2xl p-6 border border-slate-800 shadow-md space-y-5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-blue-500/20 border border-blue-400/30 flex items-center justify-center text-blue-400">
+              <Server className="w-5 h-5 text-blue-400" />
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-white flex items-center gap-2">
+                <span>Docker Desktop Setup</span>
+                <span className="text-[10px] font-semibold uppercase px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-400/30">
+                  Ready for Local Run
+                </span>
+              </h3>
+              <p className="text-xs text-slate-300 mt-0.5">
+                Multi-stage containerized build with Nginx reverse proxy, SPA client routing, and automated healthchecks.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 text-xs text-slate-400 font-mono">
+            <span>Local URL:</span>
+            <span className="bg-black/50 px-2.5 py-1 rounded text-emerald-400 border border-slate-700">http://localhost:3000</span>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 text-xs">
+          {/* Option 1: Docker Compose */}
+          <div className="bg-black/30 rounded-xl p-4 border border-slate-800 space-y-2.5 flex flex-col justify-between">
+            <div>
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-slate-200 flex items-center gap-2">
+                  <Layers className="w-4 h-4 text-blue-400" />
+                  <span>Option 1: Docker Compose (Recommended)</span>
+                </span>
+                <span className="text-[10px] text-slate-400 bg-slate-800 px-2 py-0.5 rounded">docker-compose.yml</span>
+              </div>
+              <p className="text-slate-400 text-[11px] mt-1">
+                Builds and runs the production container in detached mode with automated health check.
+              </p>
+              <div className="mt-2.5 bg-black/60 p-3 rounded-lg font-mono text-[11px] text-slate-200 border border-slate-800/80 flex items-center justify-between">
+                <code>docker compose up -d --build</code>
+                <button
+                  type="button"
+                  onClick={() => handleCopyCmd('docker compose up -d --build', 'compose')}
+                  className="ml-2 text-slate-400 hover:text-white p-1 rounded transition"
+                  title="Copy command"
+                >
+                  {copiedCmd === 'compose' ? <CheckCircle2 className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+            <div className="text-[11px] text-slate-400 flex items-center gap-2 pt-2 border-t border-slate-800/60">
+              <span className="text-slate-400">Stop command:</span>
+              <code className="text-slate-300">docker compose down</code>
+            </div>
+          </div>
+
+          {/* Option 2: Docker CLI Direct */}
+          <div className="bg-black/30 rounded-xl p-4 border border-slate-800 space-y-2.5 flex flex-col justify-between">
+            <div>
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-slate-200 flex items-center gap-2">
+                  <Terminal className="w-4 h-4 text-emerald-400" />
+                  <span>Option 2: Docker CLI Direct</span>
+                </span>
+                <span className="text-[10px] text-slate-400 bg-slate-800 px-2 py-0.5 rounded">Dockerfile</span>
+              </div>
+              <p className="text-slate-400 text-[11px] mt-1">
+                Build the image directly with docker build, then run mapped to host port 3000.
+              </p>
+              <div className="mt-2.5 bg-black/60 p-3 rounded-lg font-mono text-[11px] text-slate-200 border border-slate-800/80 flex items-center justify-between">
+                <code>docker build -t teamoff-app . && docker run -d -p 3000:3000 --name teamoff teamoff-app</code>
+                <button
+                  type="button"
+                  onClick={() => handleCopyCmd('docker build -t teamoff-app . && docker run -d -p 3000:3000 --name teamoff teamoff-app', 'cli')}
+                  className="ml-2 text-slate-400 hover:text-white p-1 rounded transition"
+                  title="Copy command"
+                >
+                  {copiedCmd === 'cli' ? <CheckCircle2 className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+            <div className="text-[11px] text-slate-400 flex items-center gap-2 pt-2 border-t border-slate-800/60">
+              <span className="text-slate-400">View logs:</span>
+              <code className="text-slate-300">docker logs -f teamoff</code>
             </div>
           </div>
         </div>

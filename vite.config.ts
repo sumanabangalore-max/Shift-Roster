@@ -4,58 +4,63 @@ import path from 'path';
 import {defineConfig, Plugin} from 'vite';
 
 function teamsWebhookProxyPlugin(): Plugin {
-  return {
-    name: 'teams-webhook-proxy',
-    configureServer(server) {
-      server.middlewares.use('/api/webhook/teams', async (req: any, res: any) => {
-        if (req.method !== 'POST') {
-          res.statusCode = 405;
+  const middleware = (req: any, res: any) => {
+    if (req.method !== 'POST') {
+      res.statusCode = 405;
+      res.setHeader('Content-Type', 'application/json');
+      res.end(JSON.stringify({ error: 'Method not allowed' }));
+      return;
+    }
+
+    let body = '';
+    req.on('data', (chunk: any) => {
+      body += chunk;
+    });
+
+    req.on('end', async () => {
+      try {
+        const data = JSON.parse(body || '{}');
+        const { url, payload } = data;
+
+        if (!url) {
+          res.statusCode = 400;
           res.setHeader('Content-Type', 'application/json');
-          res.end(JSON.stringify({ error: 'Method not allowed' }));
+          res.end(JSON.stringify({ error: 'Missing webhook url' }));
           return;
         }
 
-        let body = '';
-        req.on('data', (chunk: any) => {
-          body += chunk;
+        // Forward to Microsoft Teams webhook
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(payload)
         });
 
-        req.on('end', async () => {
-          try {
-            const data = JSON.parse(body || '{}');
-            const { url, payload } = data;
+        const text = await response.text();
+        res.setHeader('Content-Type', 'application/json');
+        res.statusCode = response.ok ? 200 : response.status;
+        res.end(JSON.stringify({ 
+          success: response.ok, 
+          status: response.status, 
+          response: text || 'OK' 
+        }));
+      } catch (err: any) {
+        res.statusCode = 500;
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify({ error: err.message || 'Webhook proxy error' }));
+      }
+    });
+  };
 
-            if (!url) {
-              res.statusCode = 400;
-              res.setHeader('Content-Type', 'application/json');
-              res.end(JSON.stringify({ error: 'Missing webhook url' }));
-              return;
-            }
-
-            // Forward to Microsoft Teams webhook
-            const response = await fetch(url, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json'
-              },
-              body: JSON.stringify(payload)
-            });
-
-            const text = await response.text();
-            res.setHeader('Content-Type', 'application/json');
-            res.statusCode = response.ok ? 200 : response.status;
-            res.end(JSON.stringify({ 
-              success: response.ok, 
-              status: response.status, 
-              response: text || 'OK' 
-            }));
-          } catch (err: any) {
-            res.statusCode = 500;
-            res.setHeader('Content-Type', 'application/json');
-            res.end(JSON.stringify({ error: err.message || 'Webhook proxy error' }));
-          }
-        });
-      });
+  return {
+    name: 'teams-webhook-proxy',
+    configureServer(server) {
+      server.middlewares.use('/api/webhook/teams', middleware);
+    },
+    configurePreviewServer(server) {
+      server.middlewares.use('/api/webhook/teams', middleware);
     }
   };
 }
