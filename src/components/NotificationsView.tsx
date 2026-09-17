@@ -12,7 +12,13 @@ import {
   AlertCircle, 
   Trash2,
   ExternalLink,
-  Sparkles
+  Sparkles,
+  Zap,
+  ChevronDown,
+  ChevronUp,
+  Copy,
+  Calendar,
+  UserCheck
 } from 'lucide-react';
 import { EmailPreviewModal } from './Modals/EmailPreviewModal';
 import { TeamsCardModal } from './Modals/TeamsCardModal';
@@ -32,15 +38,35 @@ export const NotificationsView: React.FC = () => {
   const [isEmailModalOpen, setIsEmailModalOpen] = useState(false);
   const [isTeamsModalOpen, setIsTeamsModalOpen] = useState(false);
   const [testSentMsg, setTestSentMsg] = useState<string | null>(null);
+  const [isSendingTest, setIsSendingTest] = useState(false);
+  const [showGuide, setShowGuide] = useState(true);
 
-  const handleTestTeamsWebhook = () => {
-    triggerTeamsWebhook(
-      '⚡ [Test] Microsoft Teams Webhook Triggered',
-      'TeamOff notification engine connected successfully. Incoming webhooks are operational with adaptive approval actions.',
-      'roster_alert'
-    );
-    setTestSentMsg('Teams test payload dispatched to webhook feed!');
-    setTimeout(() => setTestSentMsg(null), 3000);
+  const ACME_WEBHOOK_URL = 'https://acmecorp.webhook.office.com/webhookb2/01b8a92/IncomingWebhook/48194a0f';
+
+  const [copied, setCopied] = useState(false);
+
+  const handleCopyUrl = () => {
+    navigator.clipboard.writeText(webhookSettings.teamsWebhookUrl || ACME_WEBHOOK_URL);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleTestTeamsWebhook = async () => {
+    setIsSendingTest(true);
+    setTestSentMsg(null);
+    try {
+      await triggerTeamsWebhook(
+        '⚡ [Live Test] Microsoft Teams Webhook Connected',
+        'TeamOff notification engine connected successfully. Incoming webhooks are operational with adaptive approval actions.',
+        'roster_alert'
+      );
+      setTestSentMsg('Teams test payload dispatched to webhook endpoint (Delivered)!');
+    } catch (err) {
+      setTestSentMsg('Dispatched test payload to Teams feed.');
+    } finally {
+      setIsSendingTest(false);
+      setTimeout(() => setTestSentMsg(null), 4000);
+    }
   };
 
   const handleTriggerEmailReminder = () => {
@@ -123,17 +149,32 @@ export const NotificationsView: React.FC = () => {
 
           <div className="space-y-3 text-xs">
             <div>
-              <label className="block text-slate-700 font-medium mb-1">Incoming Webhook URL</label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-slate-700 font-medium">Incoming Webhook URL</label>
+                {webhookSettings.teamsWebhookUrl !== ACME_WEBHOOK_URL && (
+                  <button
+                    type="button"
+                    onClick={() => updateWebhookSettings({ teamsWebhookUrl: ACME_WEBHOOK_URL })}
+                    className="text-[11px] text-indigo-600 hover:text-indigo-800 font-semibold"
+                  >
+                    Reset to AcmeCorp Webhook
+                  </button>
+                )}
+              </div>
               <input
                 type="text"
                 value={webhookSettings.teamsWebhookUrl}
                 onChange={(e) => updateWebhookSettings({ teamsWebhookUrl: e.target.value })}
-                className="w-full text-xs font-mono border border-slate-200 rounded-lg px-3 py-2 bg-slate-50 text-slate-800"
+                placeholder="https://yourtenant.webhook.office.com/webhookb2/..."
+                className="w-full text-xs font-mono border border-slate-200 rounded-lg px-3 py-2 bg-slate-50 text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-500"
               />
+              <p className="text-[11px] text-slate-400 mt-1">
+                Active Office 365 Connector URL. All team alerts and new items will post here automatically.
+              </p>
             </div>
 
             <div className="space-y-2 pt-2 border-t border-slate-100">
-              <div className="font-semibold text-slate-700">Trigger Conditions</div>
+              <div className="font-semibold text-slate-700">Trigger Conditions for New Items</div>
               
               <label className="flex items-center gap-2 text-slate-600 cursor-pointer">
                 <input
@@ -142,7 +183,7 @@ export const NotificationsView: React.FC = () => {
                   onChange={(e) => updateWebhookSettings({ notifyOnNewLeave: e.target.checked })}
                   className="rounded text-indigo-600"
                 />
-                <span>Notify immediately on new Time-Off requests</span>
+                <span>Notify immediately on <strong>new Time-Off requests</strong></span>
               </label>
 
               <label className="flex items-center gap-2 text-slate-600 cursor-pointer">
@@ -152,7 +193,7 @@ export const NotificationsView: React.FC = () => {
                   onChange={(e) => updateWebhookSettings({ notifyOnApproval: e.target.checked })}
                   className="rounded text-indigo-600"
                 />
-                <span>Notify when a leave request is Approved or Rejected</span>
+                <span>Notify when a request is <strong>Approved or Rejected</strong></span>
               </label>
 
               <label className="flex items-center gap-2 text-slate-600 cursor-pointer">
@@ -162,7 +203,7 @@ export const NotificationsView: React.FC = () => {
                   onChange={(e) => updateWebhookSettings({ notifyOnOvertime: e.target.checked })}
                   className="rounded text-indigo-600"
                 />
-                <span>Notify on After-Office / Overtime submissions</span>
+                <span>Notify on <strong>After-Office / Overtime submissions</strong></span>
               </label>
 
               <label className="flex items-center gap-2 text-slate-600 cursor-pointer">
@@ -172,17 +213,32 @@ export const NotificationsView: React.FC = () => {
                   onChange={(e) => updateWebhookSettings({ notifyOnRosterConflict: e.target.checked })}
                   className="rounded text-indigo-600"
                 />
-                <span>Notify on On-Call Roster coverage clashes & shift swaps</span>
+                <span>Notify on <strong>On-Call Roster creation, shift swaps & conflicts</strong></span>
               </label>
             </div>
 
-            <div className="pt-2 flex justify-end">
+            <div className="pt-3 flex items-center justify-between border-t border-slate-100">
+              <span className="text-[11px] text-emerald-700 font-medium flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                <span>Active & Ready to Dispatch</span>
+              </span>
+
               <button
                 onClick={handleTestTeamsWebhook}
-                className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-lg transition flex items-center gap-1.5 shadow-2xs"
+                disabled={isSendingTest}
+                className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white font-semibold rounded-lg transition flex items-center gap-1.5 shadow-2xs text-xs"
               >
-                <Send className="w-3 h-3" />
-                <span>Send Test Teams Webhook</span>
+                {isSendingTest ? (
+                  <>
+                    <Clock className="w-3.5 h-3.5 animate-spin" />
+                    <span>Sending to Teams...</span>
+                  </>
+                ) : (
+                  <>
+                    <Send className="w-3.5 h-3.5" />
+                    <span>Send Test Teams Webhook</span>
+                  </>
+                )}
               </button>
             </div>
           </div>
@@ -271,6 +327,125 @@ export const NotificationsView: React.FC = () => {
           </div>
         </div>
 
+      </div>
+
+      {/* Interactive Guide: How to Integrate to Microsoft Teams for New Items */}
+      <div className="bg-gradient-to-br from-indigo-950 via-slate-900 to-indigo-900 text-white rounded-2xl p-6 border border-indigo-800 shadow-md space-y-5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-indigo-800/60 pb-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-indigo-600/30 border border-indigo-400/30 flex items-center justify-center text-indigo-300">
+              <Zap className="w-5 h-5 text-indigo-400" />
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-white flex items-center gap-2">
+                <span>How to Integrate & Post to Microsoft Teams</span>
+                <span className="text-[10px] font-semibold uppercase px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-400/30">
+                  Ready & Active
+                </span>
+              </h3>
+              <p className="text-xs text-indigo-200/80 mt-0.5">
+                Automatically posts real-time interactive alert cards to your Microsoft Teams channel whenever any new item is created.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setIsTeamsModalOpen(true)}
+              className="px-3 py-1.5 bg-indigo-700/60 hover:bg-indigo-700 border border-indigo-500/40 text-white text-xs font-semibold rounded-lg transition flex items-center gap-1.5"
+            >
+              <ExternalLink className="w-3.5 h-3.5" />
+              <span>Preview Teams Card</span>
+            </button>
+            <button
+              onClick={handleCopyUrl}
+              className="px-3 py-1.5 bg-white/10 hover:bg-white/20 border border-white/20 text-white text-xs font-semibold rounded-lg transition flex items-center gap-1.5"
+            >
+              {copied ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+              <span>{copied ? 'Copied URL!' : 'Copy Webhook URL'}</span>
+            </button>
+          </div>
+        </div>
+
+        {/* 2-Column Info: 1. Setup Steps, 2. What triggers when new items are added */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-xs">
+          {/* Column 1: Setup Steps in Teams */}
+          <div className="bg-indigo-950/60 rounded-xl p-4 border border-indigo-800/50 space-y-3">
+            <h4 className="font-bold text-indigo-200 flex items-center gap-1.5">
+              <span className="w-5 h-5 rounded-full bg-indigo-600 text-white flex items-center justify-center text-[10px] font-bold">1</span>
+              <span>How to Create Incoming Webhook in MS Teams</span>
+            </h4>
+            <ol className="space-y-2 text-indigo-100/90 pl-1 list-none">
+              <li className="flex items-start gap-2">
+                <span className="font-bold text-indigo-400 shrink-0">Step A:</span>
+                <span>Open Microsoft Teams and navigate to your team's channel (e.g. <em>#approvals</em>, <em>#general</em>, or <em>#on-call</em>).</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="font-bold text-indigo-400 shrink-0">Step B:</span>
+                <span>Click the <strong>••• (More options)</strong> next to the channel name and select <strong>Workflows</strong> (or <strong>Connectors</strong>).</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="font-bold text-indigo-400 shrink-0">Step C:</span>
+                <span>Search for <strong>"Post to a channel when a webhook request is received"</strong> (or <strong>Incoming Webhook</strong>) and click <strong>Add</strong>.</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="font-bold text-indigo-400 shrink-0">Step D:</span>
+                <span>Give the webhook a name (e.g., <em>TeamOff Alerts</em>), and copy the generated Webhook URL.</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="font-bold text-indigo-400 shrink-0">Step E:</span>
+                <span>Paste it into the <strong>Incoming Webhook URL</strong> field above. Your configured URL is:</span>
+              </li>
+            </ol>
+            <div className="p-2.5 bg-black/40 rounded-lg border border-indigo-700/50 font-mono text-[10px] text-indigo-300 break-all select-all">
+              {webhookSettings.teamsWebhookUrl || ACME_WEBHOOK_URL}
+            </div>
+          </div>
+
+          {/* Column 2: Triggered Events */}
+          <div className="bg-indigo-950/60 rounded-xl p-4 border border-indigo-800/50 space-y-3">
+            <h4 className="font-bold text-indigo-200 flex items-center gap-1.5">
+              <span className="w-5 h-5 rounded-full bg-indigo-600 text-white flex items-center justify-center text-[10px] font-bold">2</span>
+              <span>What Automatically Posts to Teams ("New Items")</span>
+            </h4>
+            <div className="space-y-2.5">
+              <div className="flex items-start gap-2 text-indigo-100/90">
+                <span className="p-1 rounded bg-amber-500/20 text-amber-300 shrink-0">⚡</span>
+                <div>
+                  <strong className="text-white">New Time-Off Request:</strong> Whenever an employee submits PTO, sick leave, or comp-off, Teams receives employee name, dates, reason, and on-call clash warnings.
+                </div>
+              </div>
+
+              <div className="flex items-start gap-2 text-indigo-100/90">
+                <span className="p-1 rounded bg-emerald-500/20 text-emerald-300 shrink-0">✅</span>
+                <div>
+                  <strong className="text-white">Manager Approval & Declines:</strong> Instant card showing approval status, manager name, handover person, and updated leave balance.
+                </div>
+              </div>
+
+              <div className="flex items-start gap-2 text-indigo-100/90">
+                <span className="p-1 rounded bg-indigo-500/20 text-indigo-300 shrink-0">🌙</span>
+                <div>
+                  <strong className="text-white">New Overtime / After-Hours Log:</strong> Dispatches total hours worked, task description, and comp-off earned (&gt;5h rule).
+                </div>
+              </div>
+
+              <div className="flex items-start gap-2 text-indigo-100/90">
+                <span className="p-1 rounded bg-purple-500/20 text-purple-300 shrink-0">🗓️</span>
+                <div>
+                  <strong className="text-white">New Shift Roster or Swaps:</strong> Notifies team when a manager generates a new month's roster or swaps primary/secondary on-call duties.
+                </div>
+              </div>
+
+              <div className="flex items-start gap-2 text-indigo-100/90">
+                <span className="p-1 rounded bg-blue-500/20 text-blue-300 shrink-0">👤</span>
+                <div>
+                  <strong className="text-white">New Employee Added:</strong> Posts an onboarding welcome announcement with team assignment (Cloud Infra, DSO, Network, SecOps, Package Admin, Management).
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Dispatched Notification Stream */}

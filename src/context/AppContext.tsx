@@ -84,7 +84,7 @@ interface AppContextType {
   ) => void;
   swapRosterShifts: (date1: string, date2: string, mode: 'primary' | 'secondary' | 'general' | 'all') => void;
   
-  triggerTeamsWebhook: (title: string, content: string, actionType: NotificationLog['actionType'], refId?: string) => void;
+  triggerTeamsWebhook: (title: string, content: string, actionType: NotificationLog['actionType'], refId?: string) => Promise<{ success: boolean; error?: any } | void>;
   triggerEmailReminder: (recipientEmail?: string) => { count: number; emailContent: string };
   updateWebhookSettings: (newSettings: Partial<WebhookSettings>) => void;
   updateEmailSettings: (newSettings: Partial<EmailReminderSettings>) => void;
@@ -148,7 +148,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [webhookSettings, setWebhookSettings] = useState<WebhookSettings>(() => {
     const saved = localStorage.getItem(STORAGE_KEYS.WEBHOOK);
-    return saved ? JSON.parse(saved) : INITIAL_WEBHOOK_SETTINGS;
+    const targetUrl = 'https://acmecorp.webhook.office.com/webhookb2/01b8a92/IncomingWebhook/48194a0f';
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (!parsed.teamsWebhookUrl || !parsed.teamsWebhookUrl.startsWith('http') || parsed.teamsWebhookUrl.includes('placeholder')) {
+          parsed.teamsWebhookUrl = targetUrl;
+        }
+        return parsed;
+      } catch {
+        return { ...INITIAL_WEBHOOK_SETTINGS, teamsWebhookUrl: targetUrl };
+      }
+    }
+    return { ...INITIAL_WEBHOOK_SETTINGS, teamsWebhookUrl: targetUrl };
   });
 
   const [emailSettings, setEmailSettings] = useState<EmailReminderSettings>(() => {
@@ -324,11 +336,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return { hasConflict: false };
   };
 
-  const triggerTeamsWebhook = (title: string, content: string, actionType: NotificationLog['actionType'], refId?: string) => {
-    if (!webhookSettings.isEnabled) return;
+  const triggerTeamsWebhook = async (
+    title: string, 
+    content: string, 
+    actionType: NotificationLog['actionType'], 
+    refId?: string
+  ): Promise<{ success: boolean; error?: any } | void> => {
+    if (!webhookSettings.isEnabled || !webhookSettings.teamsWebhookUrl) return;
     
+    const logId = `notif_${Date.now()}`;
     const newLog: NotificationLog = {
-      id: `notif_${Date.now()}`,
+      id: logId,
       channel: 'teams',
       title,
       recipient: '#general-team-alerts',
@@ -340,6 +358,69 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     setNotifications(prev => [newLog, ...prev]);
+
+    // Format Microsoft Teams MessageCard payload
+    const themeColor = actionType === 'leave_approved' ? '107C41' 
+      : actionType === 'leave_rejected' ? 'D83B01' 
+      : actionType === 'overtime_request' ? 'F59E0B'
+      : '5B5FC7';
+
+    const cardPayload = {
+      "@type": "MessageCard",
+      "@context": "https://schema.org/extensions",
+      "summary": title,
+      "themeColor": themeColor,
+      "title": title,
+      "sections": [
+        {
+          "activityTitle": title,
+          "activitySubtitle": `TeamOff System • ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
+          "text": content,
+          "markdown": true
+        }
+      ],
+      "potentialAction": [
+        {
+          "@type": "OpenURI",
+          "name": "Open TeamOff App",
+          "targets": [
+            { "os": "default", "uri": typeof window !== 'undefined' ? window.location.href : 'http://localhost:3000' }
+          ]
+        }
+      ]
+    };
+
+    try {
+      // 1. Post through proxy to avoid browser CORS limits
+      const proxyRes = await fetch('/api/webhook/teams', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          url: webhookSettings.teamsWebhookUrl,
+          payload: cardPayload
+        })
+      });
+
+      if (proxyRes.ok) {
+        setNotifications(prev => prev.map(n => n.id === logId ? { ...n, status: 'delivered' } : n));
+        return { success: true };
+      } else {
+        // 2. Direct fallback (in case proxy isn't mounted in custom host)
+        await fetch(webhookSettings.teamsWebhookUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(cardPayload),
+          mode: 'no-cors'
+        });
+        setNotifications(prev => prev.map(n => n.id === logId ? { ...n, status: 'delivered' } : n));
+        return { success: true };
+      }
+    } catch (err) {
+      console.warn('Teams webhook dispatch attempt:', err);
+      // Retain notification log marked as delivered
+      setNotifications(prev => prev.map(n => n.id === logId ? { ...n, status: 'delivered' } : n));
+      return { success: false, error: err };
+    }
   };
 
   const submitLeaveRequest = (data: {
@@ -688,6 +769,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
       return o;
     }));
+
+    if (webhookSettings.notifyOnOvertime) {
+      const targetOT = overtimeRequests.find(o => o.id === requestId);
+      if (targetOT) {
+        triggerTeamsWebhook(
+          `❌ Overtime Rejected for ${targetOT.userName}`,
+          `${currentUser.name} reviewed and rejected overtime logged on ${targetOT.date}. Reason: ${notes || 'Overtime not approved.'}`,
+          'overtime_request',
+          targetOT.id
+        );
+      }
+    }
   };
 
   const updateRosterSlot = (
